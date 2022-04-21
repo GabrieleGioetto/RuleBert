@@ -2,7 +2,7 @@ clyngor
 Cython==0.29.24
 numpy==1.19.2
 scikit_learn==1.0.1
-scipy==1.5.3
+scipy
 sympy==1.9
 tqdm==4.52.0
 transformers==4.6.0
