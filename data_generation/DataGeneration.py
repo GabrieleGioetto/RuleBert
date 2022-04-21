@@ -1,4 +1,4 @@
-from src.utils import negate, generate_fact, solve_ASP, solve_LPMLN, Rule, get_assignments, get_proba_lpmln, \
+from data_generation import negate, generate_fact, solve_ASP, solve_LPMLN, Rule, get_assignments, get_proba_lpmln, \
     find_conflicting_facts, Triple, switch, symbolic2text, solve_LPMLN_multi, dump_jsonl
 from tqdm import tqdm
 from random import randint, sample, random
@@ -10,7 +10,7 @@ import argparse
 import json
 import ast
 from pathlib import Path
-from src.utils import get_hash
+from data_generation import get_hash
 from sklearn.model_selection import train_test_split
 # TODO Type Hinting
 # TODO add __init__.py

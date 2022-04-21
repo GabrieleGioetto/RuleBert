@@ -41,7 +41,7 @@ class Rule:
         self.pool_dict = dict(zip(self.vars, pool_list))
 
     def set_rule_support(self, w: Union[str, float]):
-        self.rule_support = w
+        self.w = w
 
     @staticmethod
     def add_rule_info(rule: str):
@@ -125,4 +125,4 @@ class Rule:
     def __str__(self):
         body_str = '\n'.join([x.__str__() for x in self.body])
         return f"Rule: {self.rule}\n\nWeight: {self.w}\n\nHead:{self.head.__str__()}\n\nBody:\n{body_str}\n\n\
-                 Rule Type: {self.rule_type}"
+                 "

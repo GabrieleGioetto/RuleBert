@@ -8,9 +8,10 @@ from torch.nn import CrossEntropyLoss
 from tqdm import tqdm
 from transformers import AutoModelForSequenceClassification, AutoTokenizer
 import time
-from data_generation.src.utils import format_time, flat_accuracy, confidence_accuracy
+from data_generation import format_time, flat_accuracy, confidence_accuracy
 import numpy as np
 import argparse
+from datetime import datetime
 
 my_parser = argparse.ArgumentParser(description='Test Model')
 
@@ -113,6 +114,7 @@ total_conf_acc = 0
 
 all_probs = []
 all_diff = []
+all_logits = []
 
 loss_fct = CrossEntropyLoss(reduction='none')
 for batch in tqdm(test_dataloader):
@@ -134,6 +136,7 @@ for batch in tqdm(test_dataloader):
 
     logits = o.logits
 
+
     if not hard_rule:
         loss = torch.mean(loss_fct(logits.view(-1, 2), b_labels.view(-1)) * b_weights)
     else:
@@ -142,6 +145,9 @@ for batch in tqdm(test_dataloader):
 
     logits = logits.detach().cpu().numpy()
     label_ids = b_labels.to('cpu').numpy()
+
+    all_logits = all_logits + logits.tolist()
+
 
     total_test_accuracy += flat_accuracy(logits, label_ids)
     if not hard_rule:
@@ -173,6 +179,19 @@ print("Testing complete!")
 
 print("Total testing took {:} (h:mm:ss)".format(test_time))
 
+results = []
+
+for logit, context, hypotheses, label, prob in zip(all_logits, test_context, test_hypotheses, test_labels_, all_probs):
+    predicted_value = 0 if logit[0] > logit[1] else 1
+    confidence = prob[predicted_value]
+    results.append({
+        "Context": context,
+        "hypotheses": hypotheses,
+        "label (true value)": label,
+        "predicted value": predicted_value,
+        "confidence (minimum confidence 0.5)": confidence
+    })
+
 test_stats.append({'test_data_dir': test_file_dir,
                 'max_length': max_length,
                 'batch_size': batch_size})
@@ -192,4 +211,5 @@ if not hard_rule:
     test_stats[0]['CA@0.1'] = ca_01
     test_stats[0]['CA@0.15'] = ca_015
 
-json.dump(test_stats, open(f"{model_path}/test_stats.json", "w"), indent=4)
+json.dump(test_stats, open(f"{test_file_dir}test_stats.json", "w"), indent=4)
+json.dump(results, open(f"{test_file_dir}results_{datetime.now().strftime('%d%m%Y_%H:%M:%S')}.json", "w"), indent=4)

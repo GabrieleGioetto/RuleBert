@@ -38,3 +38,6 @@ data_generation/data/generated/chain/chain_rules_20211026T102041/test.jsonl
 ConstantDepths.zip
 ConstantDepths/**
 k
+
+models/
+models/*

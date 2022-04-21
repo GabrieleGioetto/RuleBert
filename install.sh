@@ -8,4 +8,4 @@ cd ..
 chmod u+x lpmln/*
 chmod u+x lpmln/binSupport/*
 cd ../
-pip install -r requirements.txt
+pip3 install -r requirements.txt
