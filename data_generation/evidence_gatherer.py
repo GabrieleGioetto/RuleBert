@@ -39,25 +39,40 @@ with open('data_generation/data/rule2text.pkl', 'rb') as f:
 
 rule_in_english = rule2text[rule_text]
 
-unmasker = pipeline('fill-mask', model='roberta-base', tokenizer="roberta-base")
+unmasker = pipeline('fill-mask', model='roberta-base', tokenizer="roberta-base", top_k=10)
 
 
 # This is only with one rule, it must be extended for all rules in a list
-if claim.relation in list(map(lambda t: t.relation, rule.triples)):
 
-    # I assume claim is present only once in the rule
-    claim_in_rule = list(filter(lambda t: t.relation == claim.relation, rule.triples))[0]
+# Loop over all rules saved locally
+for rule in rule2text:
+    # check if in current rule there is the relation we are trying to verify the trueness
+    if claim.relation in rule.relations:
+        if claim.relation in list(map(lambda t: t.relation, rule.triples)):
 
-    for triple in rule.triples:
-        # I iterate over all triplets in the rule which are different then the one in the claim
-        # If they have a subset of the variables in the claim
-        if triple.relation != claim.relation and set(triple.subject_list).issubset(set(claim_in_rule.subject_list)):
-            # BERT
-            triple_text_without_subject = triple.get_sentence("<mask>", claim.object)
-            triple_text_without_object = triple.get_sentence(claim.subject, "<mask>")
+            # I assume claim relation is present only once in the rule
+            claim_in_rule = list(filter(lambda t: t.relation == claim.relation, rule.triples))[0]
 
-            print(triple_text_without_subject)
-            print(triple_text_without_object)
-            print(unmasker(triple_text_without_subject))
-            print(unmasker(triple_text_without_object))
+            for triple in rule.triples:
+                # I iterate over all triplets in the rule which are different then the one in the claim
+                # If they have a subset of the variables in the claim
+                if triple.relation != claim.relation and set(triple.subject_list).issubset(set(claim_in_rule.subject_list)):
+                    # BERT
+                    triple_text_without_subject = triple.get_sentence(grounded_subject="<mask>", grounded_object=claim.object)
+                    triple_text_without_object = triple.get_sentence(grounded_subject=claim.subject, grounded_object="<mask>")
 
+                    print(triple_text_without_subject)
+                    print(triple_text_without_object)
+                    print(unmasker(triple_text_without_subject))
+                    print(unmasker(triple_text_without_object))
+
+                    # I get from the predicted masks only the predicted word ( contained in token_str )
+                    token_guesses_subject = list(map(lambda prediction: prediction["token_str"].lower().strip(),
+                                                unmasker(triple_text_without_subject)))
+                    token_guesses_object = list(map(lambda prediction: prediction["token_str"].lower().strip(),
+                                               unmasker(triple_text_without_object)))
+
+                    if claim.subject.lower() in token_guesses_subject or claim.object.lower() in token_guesses_object:
+                        print("Evidence TRUE")
+                    else:
+                        print("Evidence FALSE")
