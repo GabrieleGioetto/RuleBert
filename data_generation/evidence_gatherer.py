@@ -40,7 +40,7 @@ with open('data_generation/data/rule2text.pkl', 'rb') as f:
 
 # rule_in_english = rule2text[rule_text]
 
-unmasker = pipeline('fill-mask', model='roberta-base', tokenizer="roberta-base", top_k=10)
+unmasker = pipeline('fill-mask', model='roberta-base', tokenizer="roberta-base", top_k=20)
 
 
 def common_member(triple: Triple, claim: Triple):
@@ -78,6 +78,7 @@ for rule_key in rule2text:
 
             if triple.relation != claim.relation:
 
+                # case in which in the triple we know both variables
                 if triple.vars == claim_in_rule.vars:
                     # add that if the triple is verified it is added to the list of evidences
                     # BERT
@@ -101,7 +102,10 @@ for rule_key in rule2text:
                         print("Evidence TRUE")
                     else:
                         print("Evidence FALSE")
+
+                    #TODO: add evidence if true to verified evidences
                 # python 3.8 needed for next line
+                # case in which in the triple we know one variable
                 elif variable_not_known := common_member(triple.vars, claim_in_rule.vars):
 
                     def get_other_variable(claim_in_rule: Triple, triple: Triple, claim: Triple, variable_not_known: str):
@@ -136,8 +140,48 @@ for rule_key in rule2text:
                                                                                                     variable_not_known),
                                                                 grounded_object="<mask>")
 
-                    token_guesses = list(map(lambda prediction: prediction["token_str"].lower().strip(),
-                                                     unmasker(triple_text_query)))
+                    token_guesses = list(map(lambda prediction: (
+                                                prediction["token_str"].lower().strip(),
+                                                prediction["score"]
+                                            ),
+                                            unmasker(triple_text_query)))
 
                     variables_not_known[variable_not_known].extend(token_guesses)
+
+        predicted_values_final = {}
+        for key in variables_not_known:
+            # variables_not_known[key] = sorted(variables_not_known[key], key=lambda x: x["token_str"])
+
+            predictions = defaultdict(list)
+
+            # loop over all predicted words with their scores and do a group by -> "America": [0.1, 0.05]
+            # if a word was guessed only once it will have only one score
+            for prediction in variables_not_known[key]:
+                print(prediction)
+                k, v = prediction
+                predictions[k].append(v)
+
+            print(predictions)
+            predictions = [(k, v) for k, v in predictions.items()]
+
+            # Sort by number of predictions ( We want to get the word predicted more than one if there are)
+            # predictions = sorted(predictions, key=lambda pred: len(pred[1]))
+
+            print(predictions)
+
+            # if at least one variable has two different possible values, max_number_of_common_prediction will be 2
+            max_number_of_common_prediction = max(list(map(lambda tup: len(tup[1]), predictions)))
+
+            predictions = list(filter(lambda tup: len(tup[1]) >= max_number_of_common_prediction, predictions))
+
+            predictions = list(map(lambda tup: (tup[0], sum(tup[1])), predictions))
+
+            predicted_values_final[key] = max(predictions, key=lambda tup: tup[1])[0]
+
+            print(predicted_values_final[key] )
+
+            # for key in predictions:
+            #     predictions[key] = sorted(predictions[key], key=lambda x: (len(), prediction["score"]))
+
+
 
