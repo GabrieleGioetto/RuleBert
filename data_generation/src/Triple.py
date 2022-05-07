@@ -45,9 +45,15 @@ class Triple:
         atom_space = pos_gr_triples + [self.negate(x) for x in pos_gr_triples]
         return atom_space
 
-    def get_sentence(self, grounded_subject, grounded_object=None):
+    def get_sentence(self, grounded_subject, grounded_object=None, extra_word=False):
 
-        with open('data_generation/data/rel2text.pkl', 'rb') as f:
+        path = "data_generation/data/"
+        if extra_word:
+            file_name = path + "rel2text_extra_word.pkl"
+        else:
+            file_name = path + "rel2text.pkl"
+
+        with open(file_name, 'rb') as f:
             rel2text = pickle.load(f)
 
         if self.relation in rel2text:

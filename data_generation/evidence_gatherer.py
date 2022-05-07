@@ -1,3 +1,5 @@
+from typing import List
+
 from src.Rule import Rule
 from src.Triple import Triple
 
@@ -28,7 +30,7 @@ rule_support = args.support  # String of the rule
 claim_text = args.claim
 
 claim = Triple(claim_text)
-print(claim.get_sentence(claim.subject, claim.object))
+print(claim.get_sentence(claim.subject, claim.object, extra_word=True))
 
 # rule = Rule(rule=rule_text)
 # rule.set_rule_support(rule_support)
@@ -83,9 +85,11 @@ for rule_key in rule2text:
                     # add that if the triple is verified it is added to the list of evidences
                     # BERT
                     triple_text_without_subject = triple.get_sentence(grounded_subject="<mask>",
-                                                                      grounded_object=claim.object)
+                                                                      grounded_object=claim.object,
+                                                                      extra_word=True)
                     triple_text_without_object = triple.get_sentence(grounded_subject=claim.subject,
-                                                                     grounded_object="<mask>")
+                                                                     grounded_object="<mask>",
+                                                                     extra_word=True)
 
                     print(triple_text_without_subject)
                     print(triple_text_without_object)
@@ -132,7 +136,7 @@ for rule_key in rule2text:
                                                                 grounded_object=get_other_variable(claim_in_rule,
                                                                                                    triple,
                                                                                                    claim,
-                                                                                                   variable_not_known))
+                                                                                                   variable_not_known),)
                     else:
                         triple_text_query = triple.get_sentence(grounded_subject=get_other_variable(claim_in_rule,
                                                                                                     triple,
@@ -140,13 +144,28 @@ for rule_key in rule2text:
                                                                                                     variable_not_known),
                                                                 grounded_object="<mask>")
 
-                    token_guesses = list(map(lambda prediction: (
+                    token_guesses = list(map(lambda prediction: [
                                                 prediction["token_str"].lower().strip(),
                                                 prediction["score"]
-                                            ),
+                                            ],
                                             unmasker(triple_text_query)))
 
+                    # Normalization of scores
+                    def normalize(d: List[List[str, int]]):
+                        scores = list(map(lambda x: x[1], d))
+                        sum_scores = sum(scores)
+                        factor = 1.0 / sum_scores
+                        for tup in d:
+                            tup[1] = tup[1] * factor
+
+                        return d
+
+                    token_guesses = normalize(token_guesses)
+
                     variables_not_known[variable_not_known].extend(token_guesses)
+                # case in which we don't know any of the two variables
+                else:
+                    print("...")
 
         predicted_values_final = {}
         for key in variables_not_known:
@@ -161,24 +180,20 @@ for rule_key in rule2text:
                 k, v = prediction
                 predictions[k].append(v)
 
-            print(predictions)
             predictions = [(k, v) for k, v in predictions.items()]
-
-            # Sort by number of predictions ( We want to get the word predicted more than one if there are)
-            # predictions = sorted(predictions, key=lambda pred: len(pred[1]))
-
-            print(predictions)
 
             # if at least one variable has two different possible values, max_number_of_common_prediction will be 2
             max_number_of_common_prediction = max(list(map(lambda tup: len(tup[1]), predictions)))
 
+            # get predictions that have been predicted at least max_number_of_common_prediction times
             predictions = list(filter(lambda tup: len(tup[1]) >= max_number_of_common_prediction, predictions))
 
+            # get total score of predictions
             predictions = list(map(lambda tup: (tup[0], sum(tup[1])), predictions))
 
             predicted_values_final[key] = max(predictions, key=lambda tup: tup[1])[0]
 
-            print(predicted_values_final[key] )
+            print(predicted_values_final[key])
 
             # for key in predictions:
             #     predictions[key] = sorted(predictions[key], key=lambda x: (len(), prediction["score"]))
