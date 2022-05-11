@@ -79,7 +79,6 @@ def get_label_name_from_entity(entity: str):
     return None
 
 
-
 def save_entities_to_remove(percentage_lower=0.000005, percentage_upper=0.005):
     query = """
     SELECT ?entity, (COUNT(*) AS ?count)
@@ -131,46 +130,61 @@ def add_context(triple: Triple):
     sentence_nl = triple.get_sentence(grounded_subject=triple_subject, grounded_object=triple_object, extra_word=False)
 
 
-entity_test = "Eiffel Tower"
+def get_salient_triple():
+    print("")
 
-entities = get_all_entities(entity_test)
-# save_entities_to_remove()
-entities = filter_entities(entities)
 
-print(*entities, sep='\n')
+def get_salient_type():
+    entity_test = "Eiffel Tower"
 
-kg2vec_dbpedia_api = "http://kgvec2go.org/rest/closest-concepts/dbpedia/"
-number_of_responses = 20
-response = requests.get(f"{kg2vec_dbpedia_api}/{number_of_responses}/{entity_test}")
+    entities = get_all_entities(entity_test)
+    # save_entities_to_remove()
+    entities = filter_entities(entities)
 
-all_types = Counter()
+    print(*entities, sep='\n')
 
-with open("data/entities_to_remove.pkl", "rb") as f:
-    entities_to_remove = pickle.load(f)
+    kg2vec_dbpedia_api = "http://kgvec2go.org/rest/closest-concepts/dbpedia/"
+    number_of_responses = 20
+    response = requests.get(f"{kg2vec_dbpedia_api}/{number_of_responses}/{entity_test}")
 
-    for similar_entity in response.json()["result"]:
+    all_types = Counter()
 
-        types = get_all_types_of_subject(subject=similar_entity["concept"])
-        for type in types:
-            type_value = type["object"]["value"]
-            if type_value not in entities_to_remove:
-                all_types[type_value] += 1
+    with open("data/entities_to_remove.pkl", "rb") as f:
+        entities_to_remove = pickle.load(f)
 
-most_commons_types_between_similar = all_types.most_common(n=10)
+        for similar_entity in response.json()["result"]:
 
-most_commons_types_between_similar = list(map(lambda tup: tup[0], most_commons_types_between_similar))
+            types = get_all_types_of_subject(subject=similar_entity["concept"])
+            for type in types:
+                type_value = type["object"]["value"]
+                if type_value not in entities_to_remove:
+                    all_types[type_value] += 1
 
-most_commons_types_between_similar = filter_entities(most_commons_types_between_similar)
+    most_commons_types_between_similar = all_types.most_common(n=10)
 
-most_commons_types_between_similar = list(filter(lambda x: x in entities, most_commons_types_between_similar))
+    most_commons_types_between_similar = list(map(lambda tup: tup[0], most_commons_types_between_similar))
 
-# I get the most common entity type between similar (Ex. Cristiano Ronaldo -> SoccerPlayer)
-if len(most_commons_types_between_similar) > 0:
-    type_of_subject = most_commons_types_between_similar[0]
+    most_commons_types_between_similar = filter_entities(most_commons_types_between_similar)
 
-    print(f"type_of_subject: {type_of_subject}")
-    print(get_label_name_from_entity(type_of_subject))
-else:
-    print(get_label_name_from_entity(entities[0]))
+    most_commons_types_between_similar = list(filter(lambda x: x in entities, most_commons_types_between_similar))
 
+    # I get the most common entity type between similar (Ex. Cristiano Ronaldo -> SoccerPlayer)
+    if len(most_commons_types_between_similar) > 0:
+        type_of_subject = most_commons_types_between_similar[0]
+        print(f"type_of_subject: {type_of_subject}")
+
+        salient_type = get_label_name_from_entity(type_of_subject)
+
+    else:
+        salient_type = get_label_name_from_entity(entities[0])
+
+    return salient_type
+
+
+def main():
+    get_salient_triple()
+
+
+if __name__ == '__main__':
+    main()
 
