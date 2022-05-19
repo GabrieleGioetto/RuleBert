@@ -9,6 +9,8 @@ import pickle
 
 from collections import defaultdict
 
+from add_context import add_context
+
 my_parser = argparse.ArgumentParser(description='Get evidence with BERT')
 
 # my_parser.add_argument('--rule',
@@ -131,22 +133,20 @@ for rule_key in rule2text:
                         return claim.object
 
 
+                    known_variable = get_other_variable(claim_in_rule, triple, claim, variable_not_known)
+
                     if variable_not_known == triple.subject:
                         triple_text_query = triple.get_sentence(grounded_subject="<mask>",
-                                                                grounded_object=get_other_variable(claim_in_rule,
-                                                                                                   triple,
-                                                                                                   claim,
-                                                                                                   variable_not_known),)
+                                                                grounded_object=known_variable)
                     else:
-                        triple_text_query = triple.get_sentence(grounded_subject=get_other_variable(claim_in_rule,
-                                                                                                    triple,
-                                                                                                    claim,
-                                                                                                    variable_not_known),
+                        triple_text_query = triple.get_sentence(grounded_subject=known_variable,
                                                                 grounded_object="<mask>")
 
-                    token_guesses = list(map(lambda prediction: [
-                                                prediction["token_str"].lower().strip(),
-                                                prediction["score"]
+                    triple_text_query = add_context(triple_text_query, known_variable)
+
+                    token_guesses = list(map(lambda pred: [
+                                                pred["token_str"].lower().strip(),
+                                                pred["score"]
                                             ],
                                             unmasker(triple_text_query)))
 
