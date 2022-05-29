@@ -7,7 +7,7 @@ import pickle
 import requests
 from collections import Counter
 from urllib.parse import quote
-
+import wordninja
 
 def query_dbpedia(query):
     sparql = SPARQLWrapper(
@@ -182,12 +182,22 @@ def get_salient_from_entity(entities):
         entities_count = sorted(entities_count, key=lambda tup: -tup[1])
 
         # I pick the most frequent
-        salient_type = entities_count[0]
+        salient_type = entities_count[0][0]
+
+        salient_type = "".join(list(filter(lambda x: x.isalpha(), salient_type.split("/")[-1].lower())))
+
+        salient_type = " ".join(wordninja.split(salient_type))
+
     return salient_type
 
 
 def get_salient_type(entity_name: str):
     entities = get_all_entities(entity_name)
+
+    # Not found label on dbPedia
+    if len(entities) == 0:
+        return None
+
     # save_entities_to_remove()
     entities = filter_entities(entities)
 
@@ -236,6 +246,8 @@ def get_salient_type(entity_name: str):
             # If label not present in the entity in dbPedia
             if salient_type is None:
                 salient_type = "".join(list(filter(lambda x: x.isalpha(), type_of_subject.split("/")[-1].lower())))
+
+                salient_type = " ".join(wordninja.split(salient_type))
         else:
             salient_type = get_salient_from_entity(entities)
 
