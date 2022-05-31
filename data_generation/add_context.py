@@ -9,9 +9,10 @@ from collections import Counter
 from urllib.parse import quote
 import wordninja
 
+
 def query_dbpedia(query):
     sparql = SPARQLWrapper(
-        "http://dbpedia.org/sparql"
+        "http://dbpedia.org/sparql",
     )
     sparql.setReturnFormat(JSON)
 
@@ -28,6 +29,21 @@ def query_dbpedia(query):
     ret = sparql.queryAndConvert()
 
     return ret["results"]["bindings"]
+
+
+def query_wikidata(query, column="label"):
+    sparql = SPARQLWrapper(
+        "https://query.wikidata.org/sparql",
+        agent="Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.11 (KHTML, like Gecko) Chrome/23.0.1271.64 Safari/537.11"
+    )
+    sparql.setReturnFormat(JSON)
+
+    sparql.setQuery(query)
+
+    ret = sparql.queryAndConvert()
+
+    if "results" in ret and len(ret["results"]["bindings"]) > 0:
+        return ret["results"]["bindings"][0][column]["value"]
 
 
 def get_all_entities(name: str):
@@ -77,20 +93,39 @@ def get_all_types_of_subject(subject: str):
 
 
 def get_label_name_from_entity(entity: str):
-    query = f"""SELECT DISTINCT ?object 
-    WHERE
-    {{
-        ?entity rdfs:label ?object 
-        FILTER (?entity = <{entity}>)
-        FILTER(langMatches(lang(?object),"en"))
-    }}
-    LIMIT 1
-    """
+    # if the entity is from wikidata, I get the label from wikidata
+    if entity.split("//")[1].startswith("www.wikidata.org"):
+        query = f"""
+        PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#> 
+        PREFIX wd: <http://www.wikidata.org/entity/> 
+        select *
+        where {{
+                wd:{entity.split("/")[-1]} rdfs:label ?label .
+          FILTER (langMatches( lang(?label), "EN" ) )
+              }}
+        LIMIT 1
+        """
 
-    result = query_dbpedia(query)
+        result = query_wikidata(query)
 
-    if len(result) > 0:
-        return result[0]["object"]["value"]
+        if result is not None:
+            return result
+    else:
+        # if the entity is from dbpedia, I get the label from dbpedia
+        query = f"""SELECT DISTINCT ?object 
+        WHERE
+        {{
+            ?entity rdfs:label ?object 
+            FILTER (?entity = <{entity}>)
+            FILTER(langMatches(lang(?object),"en"))
+        }}
+        LIMIT 1
+        """
+
+        result = query_dbpedia(query)
+
+        if len(result) > 0:
+            return result[0]["object"]["value"]
 
     return None
 
@@ -143,6 +178,9 @@ def filter_entities(_entities: List[str]):
 def add_context(sentence: str, entity: str):
     entity_type = get_salient_type(entity)
 
+    if entity_type is None:
+        return sentence
+
     _to_return = f"{entity} is a {entity_type}. {sentence}"
     return _to_return
 
@@ -167,8 +205,6 @@ def get_salient_from_entity(entities):
     salient_type = None
     while salient_type is None and i < len(entities):
         salient_type = get_label_name_from_entity(entities[i])
-        # print(f"entities[i]: {entities[i]}")
-        # print(f"salient_type: {salient_type}")
         i += 1
 
     if salient_type is None:
@@ -238,10 +274,14 @@ def get_salient_type(entity_name: str):
 
         # I get the most common entity type between similar (Ex. Cristiano Ronaldo -> SoccerPlayer)
         if len(most_commons_types_between_similar) > 0:
-            type_of_subject = most_commons_types_between_similar[0]
-            # print(f"type_of_subject: {type_of_subject}")
 
-            salient_type = get_label_name_from_entity(type_of_subject)
+            salient_type = None
+            i = 0
+            while salient_type is None and i < len(most_commons_types_between_similar):
+                type_of_subject = most_commons_types_between_similar[i]
+                salient_type = get_label_name_from_entity(type_of_subject)
+
+                i += 1
 
             # If label not present in the entity in dbPedia
             if salient_type is None:
@@ -260,4 +300,3 @@ def main():
 
 if __name__ == '__main__':
     main()
-

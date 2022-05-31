@@ -65,6 +65,9 @@ for rule_key in rule2text:
         rule.set_rule_support(rule_support)
         rule.add_rule_info(rule_key)
 
+        print("--- Rule ---")
+        print(rule)
+
         # TODO: to implement better
         # to avoid neg relations ( I look for founder, I find negfounder)
         if claim.relation not in rule.relations:
@@ -79,6 +82,8 @@ for rule_key in rule2text:
             # I iterate over all triplets in the rule which are different then the one in the claim
             # If they have a subset of the variables in the claim
             # if triple.relation != claim.relation and set(triple.subject_list).issubset(set(claim_in_rule.subject_list)):
+
+            print(triple)
 
             if triple.relation != claim.relation:
 
@@ -151,7 +156,7 @@ for rule_key in rule2text:
                                             unmasker(triple_text_query)))
 
                     # Normalization of scores
-                    def normalize(d: List[List[str, int]]):
+                    def normalize(d):
                         scores = list(map(lambda x: x[1], d))
                         sum_scores = sum(scores)
                         factor = 1.0 / sum_scores
