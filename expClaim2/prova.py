@@ -1,6 +1,6 @@
 import json
 import spacy
-from add_context import get_salient_type
+from expClaim2.add_context import get_salient_type
 from transformers import pipeline
 
 with open('lama/data/Squad/test.jsonl') as f:

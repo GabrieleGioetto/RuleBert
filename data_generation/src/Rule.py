@@ -49,11 +49,11 @@ class Rule:
         with open('data_generation/data/rule2text.pkl', 'rb') as f:
             rule2text = pickle.load(f)
 
-        text = ""
+        _description = ""
 
         if(rule not in rule2text):
-            text = input(f'Please enter the natural language description of the rule {rule}.')
-            rule2text[rule] = text
+            _description = input(f'Please enter the natural language description of the rule {rule}.')
+            rule2text[rule] = _description
 
             with open('data_generation/data/rule2text.pkl', 'wb') as f:
                 pickle.dump(rule2text, f)
@@ -84,10 +84,9 @@ class Rule:
                             with open('data_generation/data/nonsymmetric_preds_set.pkl', 'wb') as f:
                                 pickle.dump(nonsymmetric_preds_set, f)
         else:
-            text = rule2text[rule]
+            _description = rule2text[rule]
 
-        print('Successfully added relation info.')
-        return text
+        return _description
 
     def generate_atom_space(self, name_pool: Dict[str, List[str]]) -> List[str]:
         """Generate rule atom space"""

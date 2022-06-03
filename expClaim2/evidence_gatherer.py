@@ -1,6 +1,5 @@
-from typing import List
-
-from data_generation.add_context import add_context
+from expClaim2.add_context import add_context
+from expClaim2.util import common_member, normalize, get_other_variable, save_context_to_google_sheet
 from data_generation.src import Rule
 from data_generation.src import Triple
 
@@ -23,47 +22,6 @@ my_parser.add_argument('--claim',
 args = my_parser.parse_args()
 
 
-def common_member(triple: List[str], claim: List[str]):
-    triple_set = set(triple)
-    claim_set = set(claim)
-    if len(triple_set.intersection(claim_set)) > 0:
-        diff = triple_set.difference(claim_set)
-        if diff:
-            return list(diff)[0]
-    return False
-
-
-# Normalization of scores
-def normalize(d):
-    scores = list(map(lambda x: x[1], d))
-    sum_scores = sum(scores)
-    factor = 1.0 / sum_scores
-    for tup in d:
-        tup[1] = tup[1] * factor
-
-    return d
-
-
-def get_other_variable(claim_in_rule: Triple, triple: Triple, claim: Triple,
-                       variable_not_known: str):
-    """
-    claim_in_rule ex: founder(A,B)
-    triple ex: country(A,C)
-    variable_not_known: C
-    claim: founder(Tesla, Musk)
-
-    return: variable known from claim, so Tesla
-    """
-
-    # From triple I get the variable i know ( opposite of the unknown one )
-    variable_known = triple.vars[0] if triple.vars[1] == variable_not_known else triple.vars[1]
-
-    # I check if the variable known is the subject or object
-    if claim_in_rule.subject == variable_known:
-        return claim.subject
-    return claim.object
-
-
 def find_evidences(rule_support, claim_text):
     claim = Triple(claim_text)
     print(claim.get_sentence(claim.subject, claim.object, extra_word=True))
@@ -77,41 +35,47 @@ def find_evidences(rule_support, claim_text):
     k = 20
     unmasker = pipeline('fill-mask', model='roberta-base', tokenizer="roberta-base", top_k=k)
 
+    # List with all contexts generated
+    context_list = []
+
     # Loop over all rules saved locally
     for rule_key in rule2text:
 
         facts = ""
 
         # check if in current rule there is the relation we are trying to verify the trueness
-        if claim.relation in rule_key:
-            rule = Rule(rule=rule_key)
-            rule.set_rule_support(rule_support)
-            rule.add_rule_info(rule_key)
+        if claim.relation not in rule_key:
+            continue
 
-            # I keep only the rules that have the relation we are trying to verify in the head
-            if claim.relation != rule.head.relation:
-                continue
+        rule = Rule(rule=rule_key)
+        rule.set_rule_support(rule_support)
+        rule.add_rule_info(rule_key)
 
-            rule_description = rule.description
+        # to avoid neg relations ( I look for founder, I find negfounder)
+        if claim.relation not in rule.relations:
+            continue
 
-            # Simple case: I just keep rule with only 3 vars and no negation
-            if rule.num_vars > 3 or "neg" in str(rule):
-                continue
+        # I keep only the rules that have the relation we are trying to verify in the head
+        if claim.relation != rule.head.relation:
+            continue
 
-            print(f"{'-' * 20} Rule {'-' * 20}")
-            print(rule)
-            print("--- End Rule ---")
+        # Simple case: I just keep rule with only 3 vars and no negation
+        if rule.num_vars > 3 or "neg" in str(rule):
+            continue
 
-            # TODO: to implement better
-            # to avoid neg relations ( I look for founder, I find negfounder)
-            if claim.relation not in rule.relations:
-                continue
+        rule_description = rule.description
 
-            facts = get_facts(claim, facts, rule, unmasker)
+        print(f"{'-' * 20} Rule {'-' * 20}")
+        print(rule)
+        print("--- End Rule ---")
 
-            context = facts + rule_description
+        facts = get_facts(claim, facts, rule, unmasker)
 
-            print(context)
+        context = facts + " " + rule_description
+
+        context_list.append(context)
+
+    save_context_to_google_sheet(context_list, claim)
 
 
 def get_facts(claim, facts, rule, unmasker):
@@ -131,7 +95,7 @@ def get_facts(claim, facts, rule, unmasker):
             if sorted(triple.vars) == sorted(claim_in_rule.vars):
                 # add that if the triple is verified it is added to the list of evidences
                 # BERT
-                facts += get_evidence_both_variables_known(claim, triple, unmasker)
+                facts += get_evidence_both_variables_known(claim, triple, unmasker) + " "
             # python 3.8 needed for next line
             # case in which in the triple we know one variable
             elif variable_not_known := common_member(triple.vars, claim_in_rule.vars):
@@ -172,8 +136,8 @@ def get_facts(claim, facts, rule, unmasker):
 def get_evidence_one_variable_known(claim, claim_in_rule, key, rule, variables_not_known):
     """
     Args:
-        claim: claim string
-        claim_in_rule: claim as a Rule object
+        claim: claim triple
+        claim_in_rule: claim triple inside the rule
         key: variable not known in the claim
         rule: complete rule
         variables_not_known: dict with all variables not known
@@ -212,6 +176,16 @@ def get_evidence_one_variable_known(claim, claim_in_rule, key, rule, variables_n
 
 
 def get_evidence_both_variables_known(claim, triple, unmasker):
+    """
+
+    Args:
+        claim: claim triple
+        triple: a triple inside the rule
+        unmasker: bert unmasker
+
+    Returns: facts generated as string
+
+    """
     _facts = ""
 
     triple_text_without_subject = triple.get_sentence(grounded_subject="<mask>",
@@ -236,10 +210,16 @@ def get_evidence_both_variables_known(claim, triple, unmasker):
 
 def get_facts_from_variable_and_rule(variable, prediction, rule, claim, claim_in_rule):
     """
-    :param variable: variable to get facts from
-    :param rule: rule to get facts from
-    :param claim_in_rule: claim to get facts from
-    :return: facts from variable and rule
+
+    Args:
+        variable: variable to get facts from
+        prediction:
+        rule: rule to get facts from
+        claim:
+        claim_in_rule: claim to get facts from
+
+    Returns: facts from variable and rule
+
     """
 
     _facts = []
@@ -256,7 +236,7 @@ def get_facts_from_variable_and_rule(variable, prediction, rule, claim, claim_in
                 _facts.append(triple.get_sentence(grounded_subject=variables_known[triple.subject],
                                                   grounded_object=prediction))
 
-    return ".".join(_facts)
+    return " ".join(_facts)
 
 
 def main():
