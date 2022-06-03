@@ -1,6 +1,5 @@
 from typing import List
 
-from src.Triple import Triple
 # Install SPARQLWrapper through -> pip install sparqlwrapper
 from SPARQLWrapper import SPARQLWrapper, JSON
 import pickle

@@ -1,7 +1,8 @@
 from typing import List
 
-from src.Rule import Rule
-from src.Triple import Triple
+from data_generation.add_context import add_context
+from data_generation.src import Rule
+from data_generation.src import Triple
 
 from transformers import pipeline
 import argparse
@@ -9,13 +10,7 @@ import pickle
 
 from collections import defaultdict
 
-from add_context import add_context
-
 my_parser = argparse.ArgumentParser(description='Get evidence with BERT')
-
-# my_parser.add_argument('--rule',
-#                        type=str,
-#                        help='Rule')
 
 my_parser.add_argument('--support',
                        type=float,
@@ -27,27 +22,8 @@ my_parser.add_argument('--claim',
 
 args = my_parser.parse_args()
 
-# rule_text = args.rule  # String of the rule (Ex. "relation(A,B) :- something(A,B)")
-rule_support = args.support  # String of the rule
-claim_text = args.claim
 
-claim = Triple(claim_text)
-print(claim.get_sentence(claim.subject, claim.object, extra_word=True))
-
-# rule = Rule(rule=rule_text)
-# rule.set_rule_support(rule_support)
-#
-# rule.add_rule_info(rule_text)
-
-with open('data_generation/data/rule2text.pkl', 'rb') as f:
-    rule2text = pickle.load(f)
-
-# rule_in_english = rule2text[rule_text]
-
-unmasker = pipeline('fill-mask', model='roberta-base', tokenizer="roberta-base", top_k=20)
-
-
-def common_member(triple: Triple, claim: Triple):
+def common_member(triple: List[str], claim: List[str]):
     triple_set = set(triple)
     claim_set = set(claim)
     if len(triple_set.intersection(claim_set)) > 0:
@@ -57,151 +33,238 @@ def common_member(triple: Triple, claim: Triple):
     return False
 
 
-# Loop over all rules saved locally
-for rule_key in rule2text:
-    # check if in current rule there is the relation we are trying to verify the trueness
-    if claim.relation in rule_key:
-        rule = Rule(rule=rule_key)
-        rule.set_rule_support(rule_support)
-        rule.add_rule_info(rule_key)
+# Normalization of scores
+def normalize(d):
+    scores = list(map(lambda x: x[1], d))
+    sum_scores = sum(scores)
+    factor = 1.0 / sum_scores
+    for tup in d:
+        tup[1] = tup[1] * factor
 
-        print("--- Rule ---")
-        print(rule)
-
-        # TODO: to implement better
-        # to avoid neg relations ( I look for founder, I find negfounder)
-        if claim.relation not in rule.relations:
-            continue
-
-        # I assume claim relation is present only once in the rule
-        claim_in_rule = list(filter(lambda t: t.relation == claim.relation, rule.triples))[0]
-
-        variables_not_known = defaultdict(list)
-
-        for triple in rule.triples:
-            # I iterate over all triplets in the rule which are different then the one in the claim
-            # If they have a subset of the variables in the claim
-            # if triple.relation != claim.relation and set(triple.subject_list).issubset(set(claim_in_rule.subject_list)):
-
-            print(triple)
-
-            if triple.relation != claim.relation:
-
-                # case in which in the triple we know both variables
-                if triple.vars == claim_in_rule.vars:
-                    # add that if the triple is verified it is added to the list of evidences
-                    # BERT
-                    triple_text_without_subject = triple.get_sentence(grounded_subject="<mask>",
-                                                                      grounded_object=claim.object,
-                                                                      extra_word=True)
-                    triple_text_without_object = triple.get_sentence(grounded_subject=claim.subject,
-                                                                     grounded_object="<mask>",
-                                                                     extra_word=True)
-
-                    print(triple_text_without_subject)
-                    print(triple_text_without_object)
-                    print(unmasker(triple_text_without_subject))
-                    print(unmasker(triple_text_without_object))
-
-                    # I get from the predicted masks only the predicted word ( contained in token_str )
-                    token_guesses_subject = list(map(lambda prediction: prediction["token_str"].lower().strip(),
-                                                     unmasker(triple_text_without_subject)))
-                    token_guesses_object = list(map(lambda prediction: prediction["token_str"].lower().strip(),
-                                                    unmasker(triple_text_without_object)))
-
-                    if claim.subject.lower() in token_guesses_subject or claim.object.lower() in token_guesses_object:
-                        print("Evidence TRUE")
-                    else:
-                        print("Evidence FALSE")
-
-                    #TODO: add evidence if true to verified evidences
-                # python 3.8 needed for next line
-                # case in which in the triple we know one variable
-                elif variable_not_known := common_member(triple.vars, claim_in_rule.vars):
-
-                    def get_other_variable(claim_in_rule: Triple, triple: Triple, claim: Triple, variable_not_known: str):
-                        """
-                        claim_in_rule ex: founder(A,B)
-                        triple ex: country(A,C)
-                        variable_not_known: C
-                        claim: founder(Tesla, Musk)
-
-                        return: variable known from claim, so Tesla
-                        """
-
-                        # From triple I get the variable i know ( opposite of the unknown one )
-                        variable_known = triple.vars[0] if triple.vars[1] == variable_not_known else triple.vars[1]
-
-                        # I check if the variable known is the subject or object
-                        if claim_in_rule.subject == variable_known:
-                            return claim.subject
-                        return claim.object
+    return d
 
 
-                    known_variable = get_other_variable(claim_in_rule, triple, claim, variable_not_known)
+def get_other_variable(claim_in_rule: Triple, triple: Triple, claim: Triple,
+                       variable_not_known: str):
+    """
+    claim_in_rule ex: founder(A,B)
+    triple ex: country(A,C)
+    variable_not_known: C
+    claim: founder(Tesla, Musk)
 
-                    if variable_not_known == triple.subject:
-                        triple_text_query = triple.get_sentence(grounded_subject="<mask>",
-                                                                grounded_object=known_variable)
-                    else:
-                        triple_text_query = triple.get_sentence(grounded_subject=known_variable,
-                                                                grounded_object="<mask>")
+    return: variable known from claim, so Tesla
+    """
 
-                    triple_text_query = add_context(triple_text_query, known_variable)
+    # From triple I get the variable i know ( opposite of the unknown one )
+    variable_known = triple.vars[0] if triple.vars[1] == variable_not_known else triple.vars[1]
 
-                    token_guesses = list(map(lambda pred: [
-                                                pred["token_str"].lower().strip(),
-                                                pred["score"]
-                                            ],
-                                            unmasker(triple_text_query)))
+    # I check if the variable known is the subject or object
+    if claim_in_rule.subject == variable_known:
+        return claim.subject
+    return claim.object
 
-                    # Normalization of scores
-                    def normalize(d):
-                        scores = list(map(lambda x: x[1], d))
-                        sum_scores = sum(scores)
-                        factor = 1.0 / sum_scores
-                        for tup in d:
-                            tup[1] = tup[1] * factor
 
-                        return d
+def find_evidences(rule_support, claim_text):
+    claim = Triple(claim_text)
+    print(claim.get_sentence(claim.subject, claim.object, extra_word=True))
 
-                    token_guesses = normalize(token_guesses)
+    with open('data_generation/data/rule2text.pkl', 'rb') as f:
+        rule2text = pickle.load(f)
 
-                    variables_not_known[variable_not_known].extend(token_guesses)
-                # case in which we don't know any of the two variables
+    # rule_in_english = rule2text[rule_text]
+
+    # I pick the top 20 prediction from BERT
+    k = 20
+    unmasker = pipeline('fill-mask', model='roberta-base', tokenizer="roberta-base", top_k=k)
+
+    # Loop over all rules saved locally
+    for rule_key in rule2text:
+
+        facts = ""
+
+        # check if in current rule there is the relation we are trying to verify the trueness
+        if claim.relation in rule_key:
+            rule = Rule(rule=rule_key)
+            rule.set_rule_support(rule_support)
+            rule.add_rule_info(rule_key)
+
+            # I keep only the rules that have the relation we are trying to verify in the head
+            if claim.relation != rule.head.relation:
+                continue
+
+            rule_description = rule.description
+
+            # Simple case: I just keep rule with only 3 vars and no negation
+            if rule.num_vars > 3 or "neg" in str(rule):
+                continue
+
+            print(f"{'-' * 20} Rule {'-' * 20}")
+            print(rule)
+            print("--- End Rule ---")
+
+            # TODO: to implement better
+            # to avoid neg relations ( I look for founder, I find negfounder)
+            if claim.relation not in rule.relations:
+                continue
+
+            facts = get_facts(claim, facts, rule, unmasker)
+
+            context = facts + rule_description
+
+            print(context)
+
+
+def get_facts(claim, facts, rule, unmasker):
+    # I assume claim relation is present only once in the rule
+    claim_in_rule = list(filter(lambda t: t.relation == claim.relation, rule.triples))[0]
+
+    variables_not_known = defaultdict(list)
+
+    # I iterate over all triplets in the rule which are different then the one in the claim
+    # If they have a subset of the variables in the claim
+    # if triple.relation != claim.relation and set(triple.subject_list).issubset(set(claim_in_rule.subject_list)):
+    for triple in rule.triples:
+
+        if triple.relation != claim.relation:
+
+            # case in which in the triple we know both variables
+            if sorted(triple.vars) == sorted(claim_in_rule.vars):
+                # add that if the triple is verified it is added to the list of evidences
+                # BERT
+                facts += get_evidence_both_variables_known(claim, triple, unmasker)
+            # python 3.8 needed for next line
+            # case in which in the triple we know one variable
+            elif variable_not_known := common_member(triple.vars, claim_in_rule.vars):
+                # Predict the variables that are not known
+
+                known_variable = get_other_variable(claim_in_rule, triple, claim, variable_not_known)
+
+                if variable_not_known == triple.subject:
+                    triple_text_query = triple.get_sentence(grounded_subject="<mask>",
+                                                            grounded_object=known_variable)
                 else:
-                    print("...")
+                    triple_text_query = triple.get_sentence(grounded_subject=known_variable,
+                                                            grounded_object="<mask>")
 
-        predicted_values_final = {}
-        for key in variables_not_known:
-            # variables_not_known[key] = sorted(variables_not_known[key], key=lambda x: x["token_str"])
+                # Add the context ( See add_context.py )
+                triple_text_query = add_context(triple_text_query, known_variable)
 
-            predictions = defaultdict(list)
+                token_guesses = list(map(lambda pred: [
+                    pred["token_str"].lower().strip(),
+                    pred["score"]
+                ],
+                                         unmasker(triple_text_query)))
 
-            # loop over all predicted words with their scores and do a group by -> "America": [0.1, 0.05]
-            # if a word was guessed only once it will have only one score
-            for prediction in variables_not_known[key]:
-                print(prediction)
-                k, v = prediction
-                predictions[k].append(v)
+                token_guesses = normalize(token_guesses)
 
-            predictions = [(k, v) for k, v in predictions.items()]
+                # Add prediction of the variable value to a dictionary
+                variables_not_known[variable_not_known].extend(token_guesses)
+            # case in which we don't know any of the two variables
+            else:
+                print("...")
 
-            # if at least one variable has two different possible values, max_number_of_common_prediction will be 2
-            max_number_of_common_prediction = max(list(map(lambda tup: len(tup[1]), predictions)))
+    for key in variables_not_known:
+        facts += get_evidence_one_variable_known(claim, claim_in_rule, key, rule, variables_not_known)
 
-            # get predictions that have been predicted at least max_number_of_common_prediction times
-            predictions = list(filter(lambda tup: len(tup[1]) >= max_number_of_common_prediction, predictions))
-
-            # get total score of predictions
-            predictions = list(map(lambda tup: (tup[0], sum(tup[1])), predictions))
-
-            predicted_values_final[key] = max(predictions, key=lambda tup: tup[1])[0]
-
-            print(predicted_values_final[key])
-
-            # for key in predictions:
-            #     predictions[key] = sorted(predictions[key], key=lambda x: (len(), prediction["score"]))
+    return facts
 
 
+def get_evidence_one_variable_known(claim, claim_in_rule, key, rule, variables_not_known):
+    """
+    Args:
+        claim: claim string
+        claim_in_rule: claim as a Rule object
+        key: variable not known in the claim
+        rule: complete rule
+        variables_not_known: dict with all variables not known
 
+    Returns: facts generated as string
+
+    """
+
+    predictions = defaultdict(list)
+
+    # loop over all predicted words with their scores and do a group by -> "America": [0.1, 0.05]
+    # if a word was guessed only once it will have only one score
+    for prediction in variables_not_known[key]:
+        k, v = prediction
+        predictions[k].append(v)
+
+    predictions = [(k, v) for k, v in predictions.items()]
+
+    # if at least one variable has two different possible values, max_number_of_common_prediction will be 2
+    max_number_of_common_prediction = max(list(map(lambda tup: len(tup[1]), predictions)))
+
+    # get predictions that have been predicted at least max_number_of_common_prediction times
+    predictions = list(filter(lambda tup: len(tup[1]) >= max_number_of_common_prediction, predictions))
+
+    # get total score of predictions
+    predictions = list(map(lambda tup: (tup[0], sum(tup[1])), predictions))
+
+    prediction_max = max(predictions, key=lambda tup: tup[1])[0]
+    confidence = max(predictions, key=lambda tup: tup[1])[1]
+
+    print(f"Prediction for key {key} with confidence {confidence}:  {prediction_max}")
+    print("\n" * 6)
+
+    _facts = get_facts_from_variable_and_rule(key, prediction_max, rule, claim, claim_in_rule)
+    return _facts
+
+
+def get_evidence_both_variables_known(claim, triple, unmasker):
+    _facts = ""
+
+    triple_text_without_subject = triple.get_sentence(grounded_subject="<mask>",
+                                                      grounded_object=claim.object,
+                                                      extra_word=True)
+    triple_text_without_object = triple.get_sentence(grounded_subject=claim.subject,
+                                                     grounded_object="<mask>",
+                                                     extra_word=True)
+    # I get from the predicted masks only the predicted word ( contained in token_str )
+    token_guesses_subject = list(map(lambda prediction: prediction["token_str"].lower().strip(),
+                                     unmasker(triple_text_without_subject)))
+    token_guesses_object = list(map(lambda prediction: prediction["token_str"].lower().strip(),
+                                    unmasker(triple_text_without_object)))
+    if claim.subject.lower() in token_guesses_subject or claim.object.lower() in token_guesses_object:
+        print("Evidence TRUE")
+        _facts += triple.get_sentence(grounded_subject=claim.object, grounded_object=claim.subject)
+    else:
+        print("Evidence FALSE")
+
+    return _facts
+
+
+def get_facts_from_variable_and_rule(variable, prediction, rule, claim, claim_in_rule):
+    """
+    :param variable: variable to get facts from
+    :param rule: rule to get facts from
+    :param claim_in_rule: claim to get facts from
+    :return: facts from variable and rule
+    """
+
+    _facts = []
+
+    variables_from_claim = [claim.subject, claim.object]
+    variables_known = dict(map(lambda x: (x[0], x[1]), zip(claim_in_rule.vars, variables_from_claim)))
+
+    for triple in rule.triples:
+        if variable in triple.vars:
+            if variable == triple.subject:
+                _facts.append(triple.get_sentence(grounded_subject=prediction,
+                                                  grounded_object=variables_known[triple.object]))
+            elif variable == triple.object:
+                _facts.append(triple.get_sentence(grounded_subject=variables_known[triple.subject],
+                                                  grounded_object=prediction))
+
+    return ".".join(_facts)
+
+
+def main():
+    rule_support = args.support  # String of the rule
+    claim_text = args.claim
+
+    find_evidences(rule_support, claim_text)
+
+
+if __name__ == '__main__':
+    main()

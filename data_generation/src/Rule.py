@@ -16,7 +16,7 @@ class Rule:
     '''
     def __init__(self, rule: str):
 
-        Rule.add_rule_info(rule)
+        self.description = Rule.add_rule_info(rule)
         self.rule = rule
         self.vars = sorted(list(set(re.findall("[A-Z]", rule))))  # get variables in the rule
         self.num_vars = len(self.vars)                            # get number of of variables
@@ -48,6 +48,8 @@ class Rule:
         """Adds rule description and predicate metadata."""
         with open('data_generation/data/rule2text.pkl', 'rb') as f:
             rule2text = pickle.load(f)
+
+        text = ""
 
         if(rule not in rule2text):
             text = input(f'Please enter the natural language description of the rule {rule}.')
@@ -81,8 +83,11 @@ class Rule:
                             nonsymmetric_preds_set.add(rel)
                             with open('data_generation/data/nonsymmetric_preds_set.pkl', 'wb') as f:
                                 pickle.dump(nonsymmetric_preds_set, f)
+        else:
+            text = rule2text[rule]
 
-            print('Successfully added relation info.')
+        print('Successfully added relation info.')
+        return text
 
     def generate_atom_space(self, name_pool: Dict[str, List[str]]) -> List[str]:
         """Generate rule atom space"""
