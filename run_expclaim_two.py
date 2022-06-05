@@ -11,12 +11,13 @@ sheet = sh.worksheet('Predicates')
 
 predicates = sheet.get()
 
-for predicate in predicates[:1]:
+for i, predicate in enumerate(predicates[11:]):
     rule_support = 1
 
     if predicate[1] == "NOT_FOUND":
         continue
     claim_text = f"{predicate[1]}({predicate[2]},{predicate[0]})"
 
+    print(f"Claim {i}: {claim_text}")
     find_evidences(rule_support, claim_text)
 

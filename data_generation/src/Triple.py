@@ -45,7 +45,7 @@ class Triple:
         atom_space = pos_gr_triples + [self.negate(x) for x in pos_gr_triples]
         return atom_space
 
-    def get_sentence(self, grounded_subject, grounded_object=None, extra_word=False):
+    def get_sentence(self, grounded_subject, grounded_object=None, extra_word=True):
 
         path = "data_generation/data/"
         if extra_word:

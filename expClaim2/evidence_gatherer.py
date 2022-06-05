@@ -63,6 +63,10 @@ def find_evidences(rule_support, claim_text):
         if rule.num_vars > 3 or "neg" in str(rule):
             continue
 
+        # # TODO: to cancel this print
+        # if "almamater" not in rule.relations:
+        #     continue
+
         rule_description = rule.description
 
         print(f"{'-' * 20} Rule {'-' * 20}")
